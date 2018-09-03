@@ -63,6 +63,7 @@ queue_t *queue_remove (queue_t **queue, queue_t *elem)
       printf("queue_remove: Erro - elem não existe.\nqueue: %p\telem: %p", queue, elem);
       return NULL;
     }
+  // Procura o elemento na fila
     queue_t *iter = *queue;
     char found_elem = 0;
     do
@@ -73,14 +74,14 @@ queue_t *queue_remove (queue_t **queue, queue_t *elem)
         break;
       }
       iter = iter->next;
-    }while (iter->next != *queue);
+    }while (iter != *queue);
     if (found_elem == 0)
     {
-      printf("queue_append: Erro - elem não está na fila.\nqueue: %p\t elem: %p\n", queue, elem);
+      printf("queue_remove: Erro - elem não está na fila.\nqueue: %p\t elem: %p\n", queue, elem);
       return NULL;
     }
 
-    // Se elemento e o primeiro da fila, move o ponteiro
+  // Se elemento e o primeiro da fila, move o ponteiro
     if (elem == *queue)
     {
       *queue = elem->next;
@@ -89,12 +90,12 @@ queue_t *queue_remove (queue_t **queue, queue_t *elem)
         *queue = NULL;
       }
     }
-    // Remove elemento da fila
-      (elem->prev)->next = elem->next;
-      (elem->next)->prev = elem->prev;
-      elem->prev = NULL;
-      elem->next = NULL;
-      return elem;
+  // Remove elemento da fila
+    (elem->prev)->next = elem->next;
+    (elem->next)->prev = elem->prev;
+    elem->prev = NULL;
+    elem->next = NULL;
+    return elem;
 }
 
 int queue_size (queue_t *queue)
@@ -115,15 +116,20 @@ int queue_size (queue_t *queue)
 
 void queue_print (char *name, queue_t *queue, void print_elem (void*) )
 {
-  printf("%s", name);
+  printf("%s[", name);
   if (queue)
   {
     queue_t *iter = queue;
     do
     {
-      print_elem ((void *) iter);
+      if (iter != queue)
+      {
+        printf(" ");
+      }
+      print_elem((void *) iter);
       iter = iter->next;
     }while(iter != queue);
-    return;
   }
+  printf("]\n");
+  return;
 }

@@ -171,7 +171,6 @@ int main (int argc, char **argv, char **envp)
    i=0 ;
    while (i<N)
    {
-      //queue_print("Fila: ", (queue_t*)fila0, print_elem);
       aux = fila0->next ;
       queue_remove ((queue_t**) &fila0, (queue_t*) aux) ;
       assert (fila_correta (fila0)) ;  // estrutura continua correta
