@@ -1,9 +1,12 @@
-// Implementação das estruturas definidas em queue.h
-// Nicolas Abril e Lucca Rawlyk
+/* Implementação das estruturas definidas em queue.h */
+/* Nicolas Abril e Lucca Rawlyk */
 
 #include <stdio.h>
-#include "datatypes.h"		// estruturas de dados necessárias
+#include <stdlib.h>
 #include <ucontext.h>
+
+#include "queue.h"
+
 #include "pingpong.h"
 
 #define CONTEXT_STACKSIZE 32768
@@ -19,21 +22,24 @@ void pingpong_init ()
   /* desativa o buffer da saida padrao (stdout), usado pela função printf */
   setvbuf (stdout, 0, _IONBF, 0) ;
 
-  // Cria a main task
+  current_task = &main_task;
+  next_tid = 0;
+
+  /* Cria a main task */
   main_task.next = NULL;
   main_task.prev = NULL;
-  queue_append((queue_t**) &task_queue, (queue_t*) main_task);
-  next_tid = 0;
+  queue_append((queue_t**) &task_queue, (queue_t*) &main_task);
   main_task.tid = next_tid++;
   main_task.parent = NULL;
+  main_task.context = malloc(sizeof(ucontext_t));
 
-  current_task = &main_task;
   return;
 }
 
 int task_create (task_t *task, void (*start_func)(void *), void *arg)
 {
-  task = malloc(sizeof(task_t));
+  // task ja tem um espaco de memoria alocado para ela quando entra nessa funcao
+  //task = malloc(sizeof(task_t));
   task->next = NULL;
   task->prev = NULL;
   queue_append((queue_t**) &task_queue, (queue_t*) task);
@@ -42,23 +48,24 @@ int task_create (task_t *task, void (*start_func)(void *), void *arg)
 
   task->parent = &main_task;
 
+  task->context = malloc(sizeof(ucontext_t));
   getcontext(task->context);
-  makecontext(task->context, void (*start_func), 1, arg);
-  char *stack = malloc (STACKSIZE) ;
+  char *stack = malloc (CONTEXT_STACKSIZE) ;
   if (stack)
   {
-     ContextPong.uc_stack.ss_sp = stack ;
-     ContextPong.uc_stack.ss_size = CONTEXT_STACKSIZE;
-     ContextPong.uc_stack.ss_flags = 0;
-     ContextPong.uc_link = 0;
+     task->context->uc_stack.ss_sp = stack ;
+     task->context->uc_stack.ss_size = CONTEXT_STACKSIZE;
+     task->context->uc_stack.ss_flags = 0;
+     task->context->uc_link = 0;
   }
   else
   {
      perror ("Erro na criacao da pilha: ");
      exit (1);
   }
+  makecontext(task->context, (void*)start_func, 1, arg);
 
-  return tid;
+  return task->tid;
 }
 
 int task_switch (task_t *task)

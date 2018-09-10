@@ -4,12 +4,12 @@
 //
 // Interface do núcleo para as aplicações
 
-// Modificado por Nicolas Abril e Lucca Rawlyk
-
 #ifndef __PINGPONG__
 #define __PINGPONG__
 
 #define _XOPEN_SOURCE 600	// para evitar erros POSIX no MacOS X
+
+#include "datatypes.h"		// estruturas de dados necessárias
 
 // funções gerais ==============================================================
 
@@ -65,7 +65,7 @@ void task_sleep (int t) ;
 // retorna o relógio atual (em milisegundos)
 unsigned int systime () ;
 
-// operações devoid pingpong_init () ; IPC ============================================================
+// operações de IPC ============================================================
 
 // semáforos
 
