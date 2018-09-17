@@ -6,43 +6,45 @@
 
 void queue_append (queue_t **queue, queue_t *elem)
 {
-  // Verifica se as entradas sao validas
-    if (!queue)
-    {
-      printf("queue_append: Erro - queue não existe.\nqueue: %p\telem: %p", queue, elem);
-      return;
-    }
-    if (!elem)
-    {
-      printf("queue_append: Erro - elem não existe.\nqueue: %p\telem: %p", queue, elem);
-      return;
-    }
-    if (elem->next || elem->prev)
-    {
-      printf("queue_append: Erro - elem está em outra fila.\nqueue: %p\t elem: %p\nelem->next: %p\t elem->prev: %p", queue, elem, elem->next, elem->prev);
-      return;
-    }
+// Verifica se as entradas sao validas
+  if (!queue)
+  {
+    printf("queue_append: Erro - queue não existe.\nqueue: %p\telem: %p", queue, elem);
+    return;
+  }
+  if (!elem)
+  {
+    printf("queue_append: Erro - elem não existe.\nqueue: %p\telem: %p", queue, elem);
+    return;
+  }
+  if (elem->next || elem->prev)
+  {
+    printf("queue_append: Erro - elem está em outra fila.\nqueue: %p\t elem: %p\nelem->next: %p\t elem->prev: %p", queue, elem, elem->next, elem->prev);
+    return;
+  }
 
   // Insere elemento na fila
-    // Se a fila está vazia
-      if (!*queue)
-      {
-        *queue = elem;
-        (*queue)->next = (*queue);
-        (*queue)->prev = (*queue);
-        return;
-      }
-
-    // Se a fila não esta vazia
-      queue_t *iter = (*queue);
-      while(iter->next != (*queue)) // Vai ate o ultimo elemento da fila
-      {
-        iter = iter->next;
-      }
-      iter->next = elem; // Insere elem na fila
-      elem->prev = iter;
-      elem->next = (*queue);
-      (*queue)->prev = elem;
+  // Se a fila está vazia
+  if (!*queue)
+  {
+    *queue = elem;
+    (*queue)->next = (*queue);
+    (*queue)->prev = (*queue);
+  }
+  // Se a fila não esta vazia
+  else
+  {
+    queue_t *iter = (*queue);
+    while(iter->next != (*queue)) // Vai ate o ultimo elemento da fila
+    {
+      iter = iter->next;
+    }
+    iter->next = elem; // Insere elem na fila
+    elem->prev = iter;
+    elem->next = (*queue);
+    (*queue)->prev = elem;
+  }
+  return;
 }
 
 queue_t *queue_remove (queue_t **queue, queue_t *elem)

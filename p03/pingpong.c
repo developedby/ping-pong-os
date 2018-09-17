@@ -25,7 +25,7 @@ void pingpong_init ()
   current_task = NULL;
   next_tid = 0;
 
-  task_create(&dispatcher, dispatcher_body, 0)
+  task_create(&dispatcher, dispatcher_body, 0);
 
   return;
 }
@@ -77,9 +77,14 @@ int task_switch (task_t *task)
     queue_append((queue_t**)&ready_queue, (queue_t*)old_task);
     old_task->queue = &ready_queue;
     old_task->state = READY;
+    return swapcontext(old_task->context, task->context);
+  }
+  else
+  {
+    ucontext_t trash;
+    return swapcontext(&trash, task->context);
   }
 
-  return swapcontext(old_task->context, task->context);
 }
 
 void task_exit (int exitCode)
@@ -89,7 +94,8 @@ void task_exit (int exitCode)
   // nem volta para ele, porque terminou
   if(current_task != &dispatcher)
   {
-    free(current_task);
+    //Nao pode dar free porque as tasks foram criadas estaticamente neste problema
+    //free(current_task);
     current_task = NULL;
     task_switch(&dispatcher);
   }
@@ -113,7 +119,7 @@ void task_suspend (task_t *task, task_t **queue)
   if (task == NULL || task == current_task)
   {
     task_t *old_task = current_task;
-    current_task = dispatcher;
+    current_task = &dispatcher;
 
     old_task->state = SUSPENDED;
     old_task->queue = queue;
@@ -164,12 +170,13 @@ void task_yield ()
 
 void dispatcher_body ()
 {
-  while (queue_size( (queue_t**)&ready_queue ) > 0)
+  task_t *next_task;
+  while (queue_size( (queue_t*)ready_queue ) > 0)
   {
-    next = scheduler();
-    if (next != NULL)
+    next_task = scheduler();
+    if (next_task != NULL)
     {
-      task_switch(next); // transfere controle para a tarefa "next"
+      task_switch(next_task); // transfere controle para a tarefa "next"
     }
     else
     {

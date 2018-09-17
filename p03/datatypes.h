@@ -19,7 +19,7 @@ typedef struct task_t
   struct task_t **queue;
   int tid;
   //struct task_t *parent;
-  task_state state;
+  enum task_state state;
   ucontext_t *context;
 } task_t ;
 
