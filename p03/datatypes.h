@@ -10,12 +10,16 @@
 
 #include <ucontext.h>
 
+enum task_state { READY=0, SUSPENDED, RUNNING };
+
 // Estrutura que define uma tarefa
 typedef struct task_t
 {
-  struct task_t *prev, *next ;
-  int tid ;
-  struct task_t *parent;
+  struct task_t *prev, *next;
+  struct task_t **queue;
+  int tid;
+  //struct task_t *parent;
+  task_state state;
   ucontext_t *context;
 } task_t ;
 

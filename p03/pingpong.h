@@ -42,6 +42,10 @@ void task_resume (task_t *task) ;
 
 // operações de escalonamento ==================================================
 
+void dispatcher_body () ;
+
+task_t* scheduler () ;
+
 // libera o processador para a próxima tarefa, retornando à fila de tarefas
 // prontas ("ready queue")
 void task_yield () ;
