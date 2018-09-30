@@ -2,3 +2,5 @@ build/
 *.out
 *.o
 .DS_Store
+pingpong-os*
+
