@@ -10,20 +10,23 @@
 
 #include <ucontext.h>
 
-enum task_state { READY=0, SUSPENDED, RUNNING };
+enum task_execution_state { READY=0, SUSPENDED, RUNNING };
 
 // Estrutura que define uma tarefa
 typedef struct task_t
 {
-  struct task_t *prev, *next;
-  struct task_t **queue;
-  int tid;
-  int owner_uid; // id do dono da tarefa; 0 = tarefa de sistema  
-  int s_prio; // Prioridade estatica
-  int d_prio; // Prioridade dinamica
+  struct task_t *prev, *next;       // Elementos adjacentes na fila desta tarefa
+  struct task_t **queue;            // Fila de execução em que a tarefa pertence
+  int tid;                          // Task id
+  int owner_uid;                    // id do dono da tarefa; 0 = tarefa de sistema  
+  int s_prio;                       // Prioridade estatica
+  int d_prio;                       // Prioridade dinamica
   //struct task_t *parent;
-  enum task_state state;
-  ucontext_t *context;
+  unsigned int initial_systime;     // System_time na criação da tarefa
+  unsigned int proc_time;           // Tempo que a tarefa passou efetivamente rodando
+  unsigned int activations;         // Numero de vezes que a tarefa foi a tarefa atual
+  enum task_execution_state exec_state; // Estado de execução da tarefa (tem que bater com a fila)
+  ucontext_t *context;          
 } task_t ;
 
 // estrutura que define um semáforo

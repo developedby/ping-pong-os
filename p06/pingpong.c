@@ -33,6 +33,7 @@ void preemption_tick ()
   system_time++;
   if (current_task != NULL)
   {
+    current_task->proc_time += PREEMPTION_TIMER_INTERVAL_USEC/1000;
     if (current_task->owner_uid != 0)
     {
       if (preemption_counter > 1)
@@ -58,7 +59,7 @@ void pingpong_init ()
 
   // Cria o dispatcher
   task_create(&dispatcher, dispatcher_body, 0);
-  dispatcher.owner_uid = 0;
+  dispatcher.owner_uid = 0; // Marca como tarefa de sistema
 
   // Configura a preempcao por temporizador
   preemption_counter = QUANTUM_SIZE;
@@ -77,7 +78,6 @@ void pingpong_init ()
   preemption_timer.it_interval.tv_usec = PREEMPTION_TIMER_INTERVAL_USEC ;   // disparos subsequentes, em micro-segundos
   preemption_timer.it_interval.tv_sec  = 0 ;   // disparos subsequentes, em segundos
 
-  // system_time = PREEMPTION_TIMER_FIRST_TICK_USEC/1000 - 1; Nao pode pq depende do computador
   system_time = 0;
 
   // arma o temporizador ITIMER_REAL (vide man setitimer)
@@ -102,11 +102,15 @@ int task_create (task_t *task, void (*start_func)(void *), void *arg)
 
   task->tid = next_tid++;
   task->owner_uid = -1; // Teria que receber como parametro, mas nao posso alterar a definicao de task_create
-
+                        // Marca como usuario por padrao, pelo motivo acima
   task->s_prio = 0;
   task->d_prio = task->s_prio;
 
-  task->state = READY;
+  task->initial_systime = systime();
+  task->proc_time = 0;
+  task-> activations = 0;
+
+  task->exec_state = READY;
 
   task->context = malloc(sizeof(ucontext_t));
   getcontext(task->context);
@@ -137,13 +141,14 @@ int task_switch (task_t *task)
 
   queue_remove((queue_t**)&ready_queue, (queue_t*)current_task);
   current_task->queue = NULL;
-  current_task->state = RUNNING;
+  current_task->exec_state = RUNNING;
+  current_task->activations++;
 
   if(old_task != NULL)
   {
     queue_append((queue_t**)&ready_queue, (queue_t*)old_task);
     old_task->queue = &ready_queue;
-    old_task->state = READY;
+    old_task->exec_state = READY;
     old_task->d_prio = old_task->s_prio + 1; // d_prio e incrementado para consertar o envelhecimento
     return swapcontext(old_task->context, task->context);
   }
@@ -157,12 +162,18 @@ int task_switch (task_t *task)
 
 void task_exit (int exitCode)
 {
+  printf( "Task %d exit: execution time %d ms, processor time %d ms, %d activations\n",
+          current_task->tid,
+          systime() - current_task->initial_systime, 
+          current_task->proc_time, 
+          current_task->activations );
+
   free(current_task->context->uc_stack.ss_sp);
   // Se terminou de executar tudo, nao libera o dispatcher (alocacao estatica)
-  // nem volta para ele, porque terminou
+  // nem volta para ele, já que terminou
   if(current_task != &dispatcher)
   {
-    //Nao pode dar free porque as tasks foram criadas estaticamente neste problema
+    //Nao pode dar free porque as tasks foram criadas estaticamente
     //free(current_task);
     current_task = NULL;
     
@@ -192,19 +203,19 @@ void task_suspend (task_t *task, task_t **queue)
 
     preemption_counter = QUANTUM_SIZE;
 
-    old_task->state = SUSPENDED;
+    old_task->exec_state = SUSPENDED;
     old_task->queue = queue;
     queue_append((queue_t**)queue, (queue_t*)old_task);
 
     queue_remove((queue_t**)dispatcher.queue, (queue_t*)&dispatcher);
-    dispatcher.state = RUNNING;
+    dispatcher.exec_state = RUNNING;
     dispatcher.queue = NULL;
 
     swapcontext(old_task->context, dispatcher.context);
   }
   else
   {
-    task->state = SUSPENDED;
+    task->exec_state = SUSPENDED;
     task->queue = queue;
     queue_remove((queue_t**)task->queue, (queue_t*)task);
     queue_append((queue_t**)queue, (queue_t*)task);
@@ -228,7 +239,7 @@ void task_resume (task_t *task)
 
   queue_remove((queue_t**)task->queue, (queue_t*)task);
   queue_append((queue_t**)&ready_queue, (queue_t*)task);
-  task->state = READY;
+  task->exec_state = READY;
   task->queue = &ready_queue;
   return;
 }
