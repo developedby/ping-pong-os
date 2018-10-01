@@ -14,8 +14,11 @@
 #define CONTEXT_STACKSIZE 32768
 
 #define QUANTUM_SIZE 20
-#define PREEMPTION_TIMER_FIRST_TICK_USEC 4000
+#define PREEMPTION_TIMER_FIRST_TICK_USEC 1000
 #define PREEMPTION_TIMER_INTERVAL_USEC 1000
+
+void dispatcher_body ();
+task_t* scheduler ();
 
 int next_tid;
 task_t *ready_queue;
@@ -30,10 +33,10 @@ unsigned int system_time;
 
 void preemption_tick ()
 {
-  system_time++;
+  system_time ++;
   if (current_task != NULL)
   {
-    current_task->proc_time += PREEMPTION_TIMER_INTERVAL_USEC/1000;
+    current_task->proc_time ++;
     if (current_task->owner_uid != 0)
     {
       if (preemption_counter > 1)
@@ -255,16 +258,7 @@ void dispatcher_body ()
   task_t *next_task;
   while (queue_size( (queue_t*)ready_queue ) > 0)
   {
-    // Envelhece as tasks
-    // A primeira task a ser executada tem desvantagem porque as outras ja estao envelhecidas em 1
-    task_t *iter;
-    // Pode dar overflow se esperar muito tempo
-    ready_queue->d_prio -= 1;
-    for (iter = ready_queue->next; iter != ready_queue; iter = iter->next)
-    {
-      iter->d_prio -= 1;
-    }
-
+   
     // Troca para a proxima tarefa
     next_task = scheduler();
     if (next_task != NULL)
@@ -286,8 +280,14 @@ task_t* scheduler ()
 {
   task_t *highest_prio_task = ready_queue; // highest_prio e o menor numero
   task_t *iter;
+
+  // Envelhece as tasks e seleciona a de maior prioridade
+  // A primeira task a ser executada tem desvantagem porque as outras ja estao envelhecidas em 1 (ocorre uma vez no inicio do sistema)
+  // Pode dar overflow se envelhecer muito
+  ready_queue->d_prio -= 1;
   for (iter = ready_queue->next; iter != ready_queue; iter = iter->next)
   {
+    iter->d_prio -= 1;
     if (iter->d_prio < highest_prio_task->d_prio) // Prioridade negativa
     {
       highest_prio_task = iter;
@@ -298,6 +298,19 @@ task_t* scheduler ()
 
 void task_setprio (task_t *task, int new_s_prio)
 {
+  if (task == NULL)
+  {
+    if (current_task != NULL)
+    {
+    	task = current_task;
+		}
+		else
+		{
+			printf("Tentou alterar prioridade do vazio, ignorado\n");
+			return;
+		}
+  }
+  // Mantem o envelhecimento quando troca s_prio
   task->d_prio -= task->s_prio;
 
   task->s_prio = new_s_prio;
@@ -321,7 +334,15 @@ int task_getprio (task_t *task)
 {
   if (task == NULL)
   {
-    return current_task->s_prio;
+		if (current_task != NULL)
+    {
+    	return current_task->s_prio;
+		}
+		else
+		{
+			printf("Tentou alterar prioridade do vazio, retornando NULL\n");
+			return NULL;
+		}
   }
   return task->s_prio;
 }
