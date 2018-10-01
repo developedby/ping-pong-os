@@ -42,16 +42,12 @@ void task_resume (task_t *task) ;
 
 // operações de escalonamento ==================================================
 
-void dispatcher_body () ;
-
-task_t* scheduler () ;
-
 // libera o processador para a próxima tarefa, retornando à fila de tarefas
 // prontas ("ready queue")
 void task_yield () ;
 
 // define a prioridade estática de uma tarefa (ou a tarefa atual)
-void task_setprio (task_t *task, int new_s_prio) ;
+void task_setprio (task_t *task, int prio) ;
 
 // retorna a prioridade estática de uma tarefa (ou a tarefa atual)
 int task_getprio (task_t *task) ;
