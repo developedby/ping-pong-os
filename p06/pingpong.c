@@ -340,8 +340,8 @@ int task_getprio (task_t *task)
 		}
 		else
 		{
-			printf("Tentou alterar prioridade do vazio, retornando NULL\n");
-			return NULL;
+			printf("Tentou alterar prioridade do vazio, retornando 0\n");
+			return 0;
 		}
   }
   return task->s_prio;
