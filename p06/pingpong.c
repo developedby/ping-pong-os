@@ -111,7 +111,7 @@ int task_create (task_t *task, void (*start_func)(void *), void *arg)
 
   task->initial_systime = systime();
   task->proc_time = 0;
-  task-> activations = 0;
+  task->activations = 0;
 
   task->exec_state = READY;
 
