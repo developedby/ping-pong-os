@@ -26,6 +26,7 @@ typedef struct task_t
   unsigned int proc_time;           // Tempo que a tarefa passou efetivamente rodando
   unsigned int activations;         // Numero de vezes que a tarefa foi a tarefa atual
   enum task_execution_state exec_state; // Estado de execução da tarefa (tem que bater com a fila)
+  struct task_t *waiting_queue;    // Fila de outros processos esperando por este processo
   int exit_code;                    // Código de saída gerado em task_exit
   ucontext_t *context;
 } task_t ;

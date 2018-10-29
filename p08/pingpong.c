@@ -144,6 +144,7 @@ int task_create (task_t *task, void (*start_func)(void *), void *arg)
   task->activations = 0;
 
   task->exec_state = READY;
+  task->waiting_queue = NULL;
   task->exit_code = -1;
 
   task->context = malloc(sizeof(ucontext_t));
@@ -199,11 +200,14 @@ int task_switch (task_t *task)
 
 void task_exit (int exitCode)
 {
+  task_t *waiting_elem = NULL;
   if(current_task == NULL)
   {
     printf("task_exit - Nao tem nenhuma task rodando\n");
     exit(1);
   }
+
+  execution_lock = 1;
 
   current_task->exit_code = exitCode;
 
@@ -212,6 +216,12 @@ void task_exit (int exitCode)
           systime() - current_task->initial_systime,
           current_task->proc_time,
           current_task->activations );
+  while (current_task->waiting_queue != NULL)
+  {
+    waiting_elem = current_task->waiting_queue;
+    queue_remove((queue_t**)&current_task->waiting_queue, (queue_t*)waiting_elem);
+    queue_append((queue_t**)&ready_queue, (queue_t*)waiting_elem);
+  }
 
   free(current_task->context->uc_stack.ss_sp);
 
@@ -222,7 +232,7 @@ void task_exit (int exitCode)
     //Nao pode dar free porque as tasks foram criadas estaticamente
     //free(current_task);
     current_task = NULL;
-
+    execution_lock = 0;
     task_switch(&dispatcher);
   }
   return;
@@ -416,14 +426,36 @@ int task_join (task_t *task)
   }
 
   // Se a task está perdida, não espera
-  if (task->queue_t == NULL)
+  if (task->(*queue) == NULL)
   {
     printf("task_join - Warning: task nao esta em nenhuma fila, fingindo que terminou\n");
     return task->exit_code;
   }
 
+  queue_append((queue_t**)&task->waiting_queue, (queue_t*)current_task);
+  current_task->queue = task->waiting_queue;
   current_task == NULL;
-  queue_append(task->wait_me_queue); // TODO
 
+  execution_lock = 0;
+  task_yield();
   return task->exit_code;
+}
+
+void task_queue_append(task_t **task_queue, task_t *task)
+{
+  queue_append((queue_t**)task_queue, (queue_t*)current_task);
+  task->queue = task_queue;
+}
+
+task_t* task_queue_remove(task_t **task_queue, task_t *task)
+{
+  if (queue_remove((queue_t**)task->waiting_queue, (queue_t*)current_task) != NULL)
+  {
+    task->queue = NULL;
+    return task;
+  }
+  else
+  {
+    return NULL;
+  }
 }

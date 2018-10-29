@@ -6,7 +6,7 @@
 
 void queue_append (queue_t **queue, queue_t *elem)
 {
-// Verifica se as entradas sao validas
+ // Verifica se as entradas sao validas
   if (!queue)
   {
     printf("queue_append: Erro - queue não existe.\nqueue: %p\telem: %p", queue, elem);
