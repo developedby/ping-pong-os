@@ -9,17 +9,17 @@ void queue_append (queue_t **queue, queue_t *elem)
  // Verifica se as entradas sao validas
   if (!queue)
   {
-    printf("queue_append: Erro - queue não existe.\nqueue: %p\telem: %p", queue, elem);
+    printf("queue_append: Erro - queue nao existe.\nqueue: %p\telem: %p", queue, elem);
     return;
   }
   if (!elem)
   {
-    printf("queue_append: Erro - elem não existe.\nqueue: %p\telem: %p", queue, elem);
+    printf("queue_append: Erro - elem nao existe.\nqueue: %p\telem: %p", queue, elem);
     return;
   }
   if (elem->next || elem->prev)
   {
-    printf("queue_append: Erro - elem está em outra fila.\nqueue: %p\t elem: %p\nelem->next: %p\t elem->prev: %p", queue, elem, elem->next, elem->prev);
+    printf("queue_append: Erro - elem ja esta em uma fila.\nqueue: %p\t elem: %p\nelem->next: %p\t elem->prev: %p", queue, elem, elem->next, elem->prev);
     return;
   }
 

@@ -19,6 +19,8 @@
 
 void dispatcher_body ();
 task_t* scheduler ();
+void task_queue_append(task_t **task_queue, task_t *task);
+task_t* task_queue_remove(task_t **task_queue, task_t *task);
 
 int next_tid;
 task_t *ready_queue;
@@ -130,8 +132,7 @@ int task_create (task_t *task, void (*start_func)(void *), void *arg)
   //task = malloc(sizeof(task_t));
   task->next = NULL;
   task->prev = NULL;
-  queue_append((queue_t**) &ready_queue, (queue_t*) task);
-  task->queue = &ready_queue;
+  task_queue_append(&ready_queue, task);
 
   task->tid = next_tid++;
   task->owner_uid = -1; // Teria que receber como parametro, mas nao posso alterar a definicao de task_create
@@ -174,8 +175,7 @@ int task_switch (task_t *task)
 
   preemption_counter = QUANTUM_SIZE;
 
-  queue_remove((queue_t**)&ready_queue, (queue_t*)current_task);
-  current_task->queue = NULL;
+  task_queue_remove(&ready_queue, current_task);
   current_task->exec_state = RUNNING;
   current_task->activations++;
 
@@ -188,8 +188,7 @@ int task_switch (task_t *task)
   // Se tinha, coloca a task antiga na fila e troca para a nova
   else
   {
-    queue_append((queue_t**)&ready_queue, (queue_t*)old_task);
-    old_task->queue = &ready_queue;
+    task_queue_append(&ready_queue, old_task);
     old_task->exec_state = READY;
     old_task->d_prio = old_task->s_prio + 1; // d_prio e incrementado para consertar o envelhecimento
     return swapcontext(old_task->context, task->context);
@@ -219,8 +218,8 @@ void task_exit (int exitCode)
   while (current_task->waiting_queue != NULL)
   {
     waiting_elem = current_task->waiting_queue;
-    queue_remove((queue_t**)&current_task->waiting_queue, (queue_t*)waiting_elem);
-    queue_append((queue_t**)&ready_queue, (queue_t*)waiting_elem);
+    task_queue_remove(&(current_task->waiting_queue), waiting_elem);
+    task_queue_append(&ready_queue, waiting_elem);
   }
 
   free(current_task->context->uc_stack.ss_sp);
@@ -260,21 +259,18 @@ void task_suspend (task_t *task, task_t **queue)
     preemption_counter = QUANTUM_SIZE;
 
     old_task->exec_state = SUSPENDED;
-    old_task->queue = queue;
-    queue_append((queue_t**)queue, (queue_t*)old_task);
+    task_queue_append(queue, old_task);
 
-    queue_remove((queue_t**)dispatcher.queue, (queue_t*)&dispatcher);
+    task_queue_remove(dispatcher.queue, &dispatcher);
     dispatcher.exec_state = RUNNING;
-    dispatcher.queue = NULL;
 
     swapcontext(old_task->context, dispatcher.context);
   }
   else
   {
     task->exec_state = SUSPENDED;
-    task->queue = queue;
-    queue_remove((queue_t**)task->queue, (queue_t*)task);
-    queue_append((queue_t**)queue, (queue_t*)task);
+    task_queue_remove(task->queue, task);
+    task_queue_append(queue, task);
   }
   return;
 }
@@ -293,10 +289,9 @@ void task_resume (task_t *task)
     return;
   }
 
-  queue_remove((queue_t**)task->queue, (queue_t*)task);
-  queue_append((queue_t**)&ready_queue, (queue_t*)task);
+  task_queue_remove(task->queue, task);
+  task_queue_append(&ready_queue, task);
   task->exec_state = READY;
-  task->queue = &ready_queue;
   return;
 }
 
@@ -426,14 +421,13 @@ int task_join (task_t *task)
   }
 
   // Se a task está perdida, não espera
-  if (task->(*queue) == NULL)
+  if (task->queue == NULL)
   {
     printf("task_join - Warning: task nao esta em nenhuma fila, fingindo que terminou\n");
     return task->exit_code;
   }
 
-  queue_append((queue_t**)&task->waiting_queue, (queue_t*)current_task);
-  current_task->queue = task->waiting_queue;
+  task_queue_append(&(task->waiting_queue), current_task);
   current_task == NULL;
 
   execution_lock = 0;
@@ -441,15 +435,15 @@ int task_join (task_t *task)
   return task->exit_code;
 }
 
-void task_queue_append(task_t **task_queue, task_t *task)
+void task_queue_append(task_t **queue, task_t *task)
 {
-  queue_append((queue_t**)task_queue, (queue_t*)current_task);
-  task->queue = task_queue;
+  queue_append((queue_t**)queue, (queue_t*)task);
+  task->queue = queue;
 }
 
-task_t* task_queue_remove(task_t **task_queue, task_t *task)
+task_t* task_queue_remove(task_t **queue, task_t *task)
 {
-  if (queue_remove((queue_t**)task->waiting_queue, (queue_t*)current_task) != NULL)
+  if (queue_remove((queue_t**)queue, (queue_t*)task) != NULL)
   {
     task->queue = NULL;
     return task;
