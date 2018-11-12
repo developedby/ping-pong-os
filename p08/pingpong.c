@@ -55,6 +55,9 @@ void preemption_tick ()
         // Se nao pode trocar de task
         if (execution_lock)
         {
+          // Reseta o contador para nao interromper na hora que destravar as interrupcoes
+          preemption_counter = QUANTUM_SIZE;
+
           return;
         }
         task_switch(&dispatcher);
@@ -164,6 +167,13 @@ int task_create (task_t *task, void (*start_func)(void *), void *arg)
      exit (1);
   }
   makecontext(task->context, (void*)start_func, 1, arg);
+
+
+  // Interrompe a tarefa atual para evitar inversao de prioridade
+  // So deve ocorrer quando tiver escalonamento por prioridade
+  // Tambem pode ser ruim com envelhecimento
+  // Da erro *** stack smashing detected *** porque da yield na main, antes de existir o dispatcher
+  //task_yield();
 
   return task->tid;
 }
@@ -406,20 +416,20 @@ int task_join (task_t *task)
   {
     return -1;
   }
+  if (current_task == NULL)
+  {
+    printf("task_join - Warning: current task == NULL, ignorado\n");
+    return -1;
+  }
   if (task == current_task)
   {
     printf("task_join - Warning: Tentou esperar a propria task atual, ignorado\n");
     return -1;
   }
-
-  // Trava a preempcao para evitar condicoes de disputa
-  execution_lock = 1;
-
   if (task->exec_state == FINISHED)
   {
     return task->exit_code;
   }
-
   // Se a task está perdida, não espera
   if (task->queue == NULL)
   {
@@ -427,10 +437,13 @@ int task_join (task_t *task)
     return task->exit_code;
   }
 
+  // Trava a preempcao para evitar condicoes de disputa (current_task em mais de uma fila)
+  execution_lock = 1;
+  // coloca a tarefa atual na fila de espera
   task_queue_append(&(task->waiting_queue), current_task);
   current_task == NULL;
-
   execution_lock = 0;
+
   task_yield();
   return task->exit_code;
 }
