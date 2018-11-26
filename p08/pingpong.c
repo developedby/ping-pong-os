@@ -23,9 +23,9 @@ void task_queue_append(task_t **task_queue, task_t *task);
 task_t* task_queue_remove(task_t **task_queue, task_t *task);
 
 int next_tid;
-task_t *ready_queue;
-task_t *suspended_queue;
-task_t *current_task;
+task_t *ready_queue = NULL;
+task_t *suspended_queue = NULL;
+task_t *current_task = NULL;
 task_t dispatcher;
 task_t main_task;
 
@@ -64,7 +64,6 @@ void preemption_tick ()
       }
     }
   }
-  return;
 }
 
 void pingpong_init ()
@@ -102,20 +101,16 @@ void pingpong_init ()
     exit (1) ;
   }
 
-
   /* desativa o buffer da saida padrao (stdout), usado pela função printf */
   setvbuf (stdout, 0, _IONBF, 0) ;
 
-
   // Cria as tarefas iniciais
   next_tid = 0;
-  // Cria a main
   task_create(&main_task, NULL, 0);
   //main_task.owner_uid = 0; // Marca a main como tarefa de sistema
-  // Cria o dispatcher
+
   task_create(&dispatcher, dispatcher_body, 0);
   dispatcher.owner_uid = 0; // Marca dispatcher como tarefa de sistema
-
 
   // Inicia o sistema
   current_task = NULL;
@@ -131,6 +126,7 @@ void pingpong_init ()
 
 int task_create (task_t *task, void (*start_func)(void *), void *arg)
 {
+  execution_lock = 1;
   // task ja tem um espaco de memoria alocado para ela quando entra nessa funcao
   //task = malloc(sizeof(task_t));
   task->next = NULL;
@@ -140,6 +136,8 @@ int task_create (task_t *task, void (*start_func)(void *), void *arg)
   task->tid = next_tid++;
   task->owner_uid = -1; // Teria que receber como parametro, mas nao posso alterar a definicao de task_create
                         // Marca como usuario por padrao, pelo motivo acima
+  printf("Criando task %d no endereço %p\n", task->tid, task);
+
   task->s_prio = 0;
   task->d_prio = task->s_prio;
 
@@ -167,7 +165,7 @@ int task_create (task_t *task, void (*start_func)(void *), void *arg)
      exit (1);
   }
   makecontext(task->context, (void*)start_func, 1, arg);
-
+  execution_lock = 0;
 
   // Interrompe a tarefa atual para evitar inversao de prioridade
   // So deve ocorrer quando tiver escalonamento por prioridade
@@ -180,12 +178,13 @@ int task_create (task_t *task, void (*start_func)(void *), void *arg)
 
 int task_switch (task_t *task)
 {
+  execution_lock = 1;
   task_t* old_task = current_task;
   current_task = task;
 
   preemption_counter = QUANTUM_SIZE;
 
-  task_queue_remove(&ready_queue, current_task);
+  task_queue_remove(current_task->queue, current_task);
   current_task->exec_state = RUNNING;
   current_task->activations++;
 
@@ -193,6 +192,7 @@ int task_switch (task_t *task)
   if(old_task == NULL)
   {
     ucontext_t trash;
+    execution_lock = 0;
     return swapcontext(&trash, task->context);
   }
   // Se tinha, coloca a task antiga na fila e troca para a nova
@@ -201,6 +201,7 @@ int task_switch (task_t *task)
     task_queue_append(&ready_queue, old_task);
     old_task->exec_state = READY;
     old_task->d_prio = old_task->s_prio + 1; // d_prio e incrementado para consertar o envelhecimento
+    execution_lock = 0;
     return swapcontext(old_task->context, task->context);
   }
 
@@ -234,8 +235,6 @@ void task_exit (int exitCode)
 
   free(current_task->context->uc_stack.ss_sp);
 
-  // Se terminou de executar tudo, nao libera o dispatcher (alocacao estatica)
-  // Também nao volta para ele, já que terminou
   if(current_task != &dispatcher)
   {
     //Nao pode dar free porque as tasks foram criadas estaticamente
@@ -243,8 +242,15 @@ void task_exit (int exitCode)
     current_task = NULL;
     execution_lock = 0;
     task_switch(&dispatcher);
+    return;
   }
-  return;
+  // Se terminou de executar tudo, nao libera o dispatcher (alocacao estatica)
+  // Também nao volta para ele, já que terminou
+  else
+  {
+    execution_lock = 0;
+    return;
+  }
 }
 
 int task_id ()
@@ -263,6 +269,7 @@ void task_suspend (task_t *task, task_t **queue)
 
   if (task == NULL || task == current_task)
   {
+    execution_lock = 1;
     task_t *old_task = current_task;
     current_task = &dispatcher;
 
@@ -274,13 +281,16 @@ void task_suspend (task_t *task, task_t **queue)
     task_queue_remove(dispatcher.queue, &dispatcher);
     dispatcher.exec_state = RUNNING;
 
+    execution_lock = 0;
     swapcontext(old_task->context, dispatcher.context);
   }
   else
   {
+    execution_lock = 1;
     task->exec_state = SUSPENDED;
     task_queue_remove(task->queue, task);
     task_queue_append(queue, task);
+    execution_lock = 0;
   }
   return;
 }
@@ -299,9 +309,11 @@ void task_resume (task_t *task)
     return;
   }
 
+  execution_lock = 1;
   task_queue_remove(task->queue, task);
   task_queue_append(&ready_queue, task);
   task->exec_state = READY;
+  execution_lock = 0;
   return;
 }
 
@@ -368,6 +380,7 @@ void task_setprio (task_t *task, int new_s_prio)
 			return;
 		}
   }
+  execution_lock = 1;
   // Mantem o envelhecimento quando troca s_prio
   task->d_prio -= task->s_prio;
 
@@ -385,6 +398,7 @@ void task_setprio (task_t *task, int new_s_prio)
   }
   // Atualiza a prioridade dinamica para bater com a atualizacao
   task->d_prio += task->s_prio;
+  execution_lock = 0;
   return;
 }
 
@@ -398,7 +412,7 @@ int task_getprio (task_t *task)
 		}
 		else
 		{
-			printf("Tentou alterar prioridade do vazio, retornando 0\n");
+			printf("Tentou ler prioridade do vazio, retornando 0\n");
 			return 0;
 		}
   }
@@ -441,7 +455,7 @@ int task_join (task_t *task)
   execution_lock = 1;
   // coloca a tarefa atual na fila de espera
   task_queue_append(&(task->waiting_queue), current_task);
-  current_task == NULL;
+  current_task = NULL;
   execution_lock = 0;
 
   task_yield();
