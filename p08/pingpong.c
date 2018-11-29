@@ -34,7 +34,7 @@ int initialized;  // 1 se o sistema operacional já foi inicializado
 struct sigaction preemption_action;
 struct itimerval preemption_timer;
 int preemption_counter;
-int execution_lock;
+int execution_lock = 0;
 
 unsigned int system_time;
 
@@ -60,7 +60,10 @@ void preemption_tick ()
 
           return;
         }
-        task_switch(&dispatcher);
+        else
+        {
+          task_switch(&dispatcher);
+        }
       }
     }
   }
@@ -75,7 +78,7 @@ void pingpong_init ()
   system_time = 0;
 
   // Impede que init seja interrompido
-  execution_lock = 1;
+  execution_lock++;
 
   // Configura a preempcao por temporizador
   preemption_counter = QUANTUM_SIZE;
@@ -120,13 +123,13 @@ void pingpong_init ()
     initialized = 1;
     task_switch(&main_task); // Variavel global pra nao entrar em loop (como melhorar?)
   }
-  execution_lock = 0;
+  execution_lock--;
   return;
 }
 
 int task_create (task_t *task, void (*start_func)(void *), void *arg)
 {
-  execution_lock = 1;
+  execution_lock++;
   // task ja tem um espaco de memoria alocado para ela quando entra nessa funcao
   //task = malloc(sizeof(task_t));
   task->next = NULL;
@@ -165,7 +168,7 @@ int task_create (task_t *task, void (*start_func)(void *), void *arg)
      exit (1);
   }
   makecontext(task->context, (void*)start_func, 1, arg);
-  execution_lock = 0;
+  execution_lock--;
 
   // Interrompe a tarefa atual para evitar inversao de prioridade
   // So deve ocorrer quando tiver escalonamento por prioridade
@@ -178,7 +181,7 @@ int task_create (task_t *task, void (*start_func)(void *), void *arg)
 
 int task_switch (task_t *task)
 {
-  execution_lock = 1;
+  execution_lock++;
   task_t* old_task = current_task;
   current_task = task;
 
@@ -192,7 +195,7 @@ int task_switch (task_t *task)
   if(old_task == NULL)
   {
     ucontext_t trash;
-    execution_lock = 0;
+    execution_lock--;
     return swapcontext(&trash, task->context);
   }
   // Se tinha, coloca a task antiga na fila e troca para a nova
@@ -201,7 +204,7 @@ int task_switch (task_t *task)
     task_queue_append(&ready_queue, old_task);
     old_task->exec_state = READY;
     old_task->d_prio = old_task->s_prio + 1; // d_prio e incrementado para consertar o envelhecimento
-    execution_lock = 0;
+    execution_lock--;
     return swapcontext(old_task->context, task->context);
   }
 
@@ -217,7 +220,7 @@ void task_exit (int exitCode)
     exit(1);
   }
 
-  execution_lock = 1;
+  execution_lock++;
 
   current_task->exit_code = exitCode;
 
@@ -240,7 +243,7 @@ void task_exit (int exitCode)
     //Nao pode dar free porque as tasks foram criadas estaticamente
     //free(current_task);
     current_task = NULL;
-    execution_lock = 0;
+    execution_lock--;
     task_switch(&dispatcher);
     return;
   }
@@ -248,7 +251,7 @@ void task_exit (int exitCode)
   // Também nao volta para ele, já que terminou
   else
   {
-    execution_lock = 0;
+    execution_lock--;
     return;
   }
 }
@@ -260,16 +263,21 @@ int task_id ()
 
 void task_suspend (task_t *task, task_t **queue)
 {
+  if (task == NULL)
+  {
+    task = current_task;
+  }
+
   // Da erro se tenta suspender o dispatcher
-  if(task == &dispatcher || ((task == NULL) && (current_task == &dispatcher)))
+  if(task == &dispatcher)
   {
     printf("task_suspend: Tentou suspender o dispatcher, ignorado\n");
     return;
   }
 
-  if (task == NULL || task == current_task)
+  if (task == current_task)
   {
-    execution_lock = 1;
+    execution_lock++;
     task_t *old_task = current_task;
     current_task = &dispatcher;
 
@@ -280,17 +288,18 @@ void task_suspend (task_t *task, task_t **queue)
 
     task_queue_remove(dispatcher.queue, &dispatcher);
     dispatcher.exec_state = RUNNING;
+    dispatcher.activations++;
 
-    execution_lock = 0;
+    execution_lock--;
     swapcontext(old_task->context, dispatcher.context);
   }
   else
   {
-    execution_lock = 1;
+    execution_lock++;
     task->exec_state = SUSPENDED;
     task_queue_remove(task->queue, task);
     task_queue_append(queue, task);
-    execution_lock = 0;
+    execution_lock--;
   }
   return;
 }
@@ -309,11 +318,11 @@ void task_resume (task_t *task)
     return;
   }
 
-  execution_lock = 1;
+  execution_lock++;
   task_queue_remove(task->queue, task);
   task_queue_append(&ready_queue, task);
   task->exec_state = READY;
-  execution_lock = 0;
+  execution_lock--;
   return;
 }
 
@@ -380,7 +389,7 @@ void task_setprio (task_t *task, int new_s_prio)
 			return;
 		}
   }
-  execution_lock = 1;
+  execution_lock++;
   // Mantem o envelhecimento quando troca s_prio
   task->d_prio -= task->s_prio;
 
@@ -398,7 +407,7 @@ void task_setprio (task_t *task, int new_s_prio)
   }
   // Atualiza a prioridade dinamica para bater com a atualizacao
   task->d_prio += task->s_prio;
-  execution_lock = 0;
+  execution_lock--;
   return;
 }
 
@@ -451,32 +460,27 @@ int task_join (task_t *task)
     return task->exit_code;
   }
 
-  // Trava a preempcao para evitar condicoes de disputa (current_task em mais de uma fila)
-  execution_lock = 1;
-  // coloca a tarefa atual na fila de espera
-  task_queue_append(&(task->waiting_queue), current_task);
-  current_task = NULL;
-  execution_lock = 0;
+  task_suspend(current_task, &(task->waiting_queue));
 
-  task_yield();
   return task->exit_code;
 }
 
 void task_queue_append(task_t **queue, task_t *task)
 {
+  execution_lock++;
   queue_append((queue_t**)queue, (queue_t*)task);
   task->queue = queue;
+  execution_lock--;
 }
 
 task_t* task_queue_remove(task_t **queue, task_t *task)
 {
-  if (queue_remove((queue_t**)queue, (queue_t*)task) != NULL)
+  execution_lock++;
+  task = (task_t*)queue_remove((queue_t**)queue, (queue_t*)task);
+  if (task != NULL)
   {
     task->queue = NULL;
-    return task;
   }
-  else
-  {
-    return NULL;
-  }
+  execution_lock--;
+  return task;
 }
