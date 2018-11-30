@@ -24,7 +24,7 @@ task_t* task_queue_remove(task_t **task_queue, task_t *task);
 
 int next_tid;
 task_t *ready_queue = NULL;
-task_t *suspended_queue = NULL;
+task_t *sleeping_queue = NULL;
 task_t *current_task = NULL;
 task_t dispatcher;
 task_t main_task;
@@ -334,8 +334,14 @@ void task_yield ()
 
 void dispatcher_body ()
 {
+  // Checa se tem alguem para acordar
+  while(waiting_queue && (waiting_queue->wake_time < systime()))
+  {
+    task_resume(waiting_queue)
+  }  
+
   task_t *next_task;
-  while (queue_size( (queue_t*)ready_queue ) > 0)
+  while (queue_size((queue_t*)ready_queue) > 0)
   {
 
     // Troca para a proxima tarefa
@@ -464,6 +470,16 @@ int task_join (task_t *task)
 
   return task->exit_code;
 }
+
+void task_sleep (int t)
+{
+  current_task->wake_time = systime() + t;
+  // Falta inserir ordenado
+  task_suspend(current_task, &sleeping_queue);
+  return;
+}
+
+
 
 void task_queue_append(task_t **queue, task_t *task)
 {
