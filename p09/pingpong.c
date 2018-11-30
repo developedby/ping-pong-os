@@ -19,8 +19,9 @@
 
 void dispatcher_body ();
 task_t* scheduler ();
-void task_queue_append(task_t **task_queue, task_t *task);
-task_t* task_queue_remove(task_t **task_queue, task_t *task);
+void task_queue_append(task_t *task, task_t **queue);
+task_t* task_queue_remove(task_t *task, task_t **queue);
+void task_queue_sort_last_element_by_wake_time(task_t **queue);
 
 int next_tid;
 task_t *ready_queue = NULL;
@@ -29,14 +30,14 @@ task_t *current_task = NULL;
 task_t dispatcher;
 task_t main_task;
 
-int initialized;  // 1 se o sistema operacional já foi inicializado
+int initialized = 0;  // 1 se o sistema operacional já foi inicializado
 
 struct sigaction preemption_action;
 struct itimerval preemption_timer;
 int preemption_counter;
 int execution_lock = 0;
 
-unsigned int system_time;
+unsigned int system_time = 0;
 
 void preemption_tick ()
 {
@@ -111,7 +112,6 @@ void pingpong_init ()
   next_tid = 0;
   task_create(&main_task, NULL, 0);
   //main_task.owner_uid = 0; // Marca a main como tarefa de sistema
-
   task_create(&dispatcher, dispatcher_body, 0);
   dispatcher.owner_uid = 0; // Marca dispatcher como tarefa de sistema
 
@@ -134,7 +134,7 @@ int task_create (task_t *task, void (*start_func)(void *), void *arg)
   //task = malloc(sizeof(task_t));
   task->next = NULL;
   task->prev = NULL;
-  task_queue_append(&ready_queue, task);
+  task_queue_append(task, &ready_queue);
 
   task->tid = next_tid++;
   task->owner_uid = -1; // Teria que receber como parametro, mas nao posso alterar a definicao de task_create
@@ -145,6 +145,7 @@ int task_create (task_t *task, void (*start_func)(void *), void *arg)
   task->d_prio = task->s_prio;
 
   task->initial_systime = systime();
+  task->wake_time = 0;
   task->proc_time = 0;
   task->activations = 0;
 
@@ -187,7 +188,7 @@ int task_switch (task_t *task)
 
   preemption_counter = QUANTUM_SIZE;
 
-  task_queue_remove(current_task->queue, current_task);
+  task_queue_remove(current_task, current_task->queue);
   current_task->exec_state = RUNNING;
   current_task->activations++;
 
@@ -201,7 +202,7 @@ int task_switch (task_t *task)
   // Se tinha, coloca a task antiga na fila e troca para a nova
   else
   {
-    task_queue_append(&ready_queue, old_task);
+    task_queue_append(old_task, &ready_queue);
     old_task->exec_state = READY;
     old_task->d_prio = old_task->s_prio + 1; // d_prio e incrementado para consertar o envelhecimento
     execution_lock--;
@@ -232,8 +233,8 @@ void task_exit (int exitCode)
   while (current_task->waiting_queue != NULL)
   {
     waiting_elem = current_task->waiting_queue;
-    task_queue_remove(&(current_task->waiting_queue), waiting_elem);
-    task_queue_append(&ready_queue, waiting_elem);
+    task_queue_remove(waiting_elem, &(current_task->waiting_queue));
+    task_queue_append(waiting_elem, &ready_queue);
   }
 
   free(current_task->context->uc_stack.ss_sp);
@@ -275,6 +276,7 @@ void task_suspend (task_t *task, task_t **queue)
     return;
   }
 
+  // Se vai suspender a task atual, troca para o dispatcher
   if (task == current_task)
   {
     execution_lock++;
@@ -284,21 +286,26 @@ void task_suspend (task_t *task, task_t **queue)
     preemption_counter = QUANTUM_SIZE;
 
     old_task->exec_state = SUSPENDED;
-    task_queue_append(queue, old_task);
+    task_queue_append(old_task, queue);
+    if (queue == &sleeping_queue)
+    {
+      task_queue_sort_last_element_by_wake_time(queue);
+    }
 
-    task_queue_remove(dispatcher.queue, &dispatcher);
+    task_queue_remove(&dispatcher, dispatcher.queue);
     dispatcher.exec_state = RUNNING;
     dispatcher.activations++;
 
     execution_lock--;
     swapcontext(old_task->context, dispatcher.context);
   }
+  // Se vai suspender uma task que não está executando só troca de fila
   else
   {
     execution_lock++;
     task->exec_state = SUSPENDED;
-    task_queue_remove(task->queue, task);
-    task_queue_append(queue, task);
+    task_queue_remove(task, task->queue);
+    task_queue_append(task, queue);
     execution_lock--;
   }
   return;
@@ -317,10 +324,10 @@ void task_resume (task_t *task)
   {
     return;
   }
-
+  printf("Voltando a task %d", task->tid);
   execution_lock++;
-  task_queue_remove(task->queue, task);
-  task_queue_append(&ready_queue, task);
+  task_queue_remove(task, task->queue);
+  task_queue_append(task, &ready_queue);
   task->exec_state = READY;
   execution_lock--;
   return;
@@ -334,28 +341,42 @@ void task_yield ()
 
 void dispatcher_body ()
 {
-  // Checa se tem alguem para acordar
-  while(waiting_queue && (waiting_queue->wake_time < systime()))
-  {
-    task_resume(waiting_queue)
-  }  
-
   task_t *next_task;
-  while (queue_size((queue_t*)ready_queue) > 0)
+  int done = 0;
+  while (!done)
   {
-
-    // Troca para a proxima tarefa
-    next_task = scheduler();
-    if (next_task != NULL)
+    while (ready_queue)
     {
+      // Checa se tem alguem para acordar
+      while(sleeping_queue && (sleeping_queue->wake_time < systime()))
+      {
+        task_resume(sleeping_queue);
+      }  
 
-      task_switch(next_task); // transfere controle para a tarefa "next"
+      // Troca para a proxima tarefa
+      next_task = scheduler();
+      if (next_task)
+      {
+        task_switch(next_task); // transfere controle para a tarefa "next"
+      }
+      else
+      {
+        printf("dispatcher_body: Próxima tarefa não existe\n");
+      }
+
+    }
+
+    // Se nao tem nenhuma tarefa pra rodar mas tem processos dormindo, espera
+    if (sleeping_queue)
+    {
+      while (sleeping_queue->wake_time > systime())
+        ;
+      task_resume(sleeping_queue);
     }
     else
     {
-      printf("dispatcher_body: Próxima tarefa não existe\n");
+      done = 1;
     }
-
   }
   task_exit(0); // encerra a tarefa dispatcher
   return;
@@ -474,14 +495,13 @@ int task_join (task_t *task)
 void task_sleep (int t)
 {
   current_task->wake_time = systime() + t;
-  // Falta inserir ordenado
   task_suspend(current_task, &sleeping_queue);
   return;
 }
 
 
 
-void task_queue_append(task_t **queue, task_t *task)
+void task_queue_append(task_t *task, task_t **queue)
 {
   execution_lock++;
   queue_append((queue_t**)queue, (queue_t*)task);
@@ -489,7 +509,7 @@ void task_queue_append(task_t **queue, task_t *task)
   execution_lock--;
 }
 
-task_t* task_queue_remove(task_t **queue, task_t *task)
+task_t* task_queue_remove(task_t *task, task_t **queue)
 {
   execution_lock++;
   task = (task_t*)queue_remove((queue_t**)queue, (queue_t*)task);
@@ -499,4 +519,42 @@ task_t* task_queue_remove(task_t **queue, task_t *task)
   }
   execution_lock--;
   return task;
+}
+
+void task_queue_sort_last_element_by_wake_time(task_t **queue)
+{
+  if (queue == NULL)
+  {
+    printf("task_queue_sort_last_element - Error: Fila não existe, ignorado\n");
+    return;
+  }
+  if (*queue == NULL)
+  {
+    printf("task_queue_sort_last_element - Error: Tentou ordenar fila vazia, ignorado\n");
+    return;
+  }
+  execution_lock++;
+  task_t *last_elem = (*queue)->prev;
+  for (task_t *elem = *queue; elem != last_elem; elem = elem->next)
+  {
+    if (elem->wake_time > last_elem->wake_time)
+    {
+      if (queue == &elem)
+      {
+        queue = &last_elem;
+      }
+      else
+      {
+        last_elem->prev->next = last_elem->next;
+        last_elem->next->prev = last_elem->prev;
+        last_elem->next = elem;
+        last_elem->prev = elem->prev;
+        elem->prev->next = last_elem;
+        elem->prev = last_elem;
+      }
+      break;
+    }
+  }
+  execution_lock--;
+  return;
 }
