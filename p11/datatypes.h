@@ -11,7 +11,7 @@
 #include <ucontext.h>
 
 enum task_execution_state { READY, SUSPENDED, RUNNING, FINISHED };
-enum sem_state { CREATED=548793, DESTROYED };
+enum obj_state { CREATED=548793, DESTROYED };
 
 // Estrutura que define uma tarefa
 typedef struct task_t
@@ -36,9 +36,9 @@ typedef struct task_t
 // estrutura que define um semáforo
 typedef struct
 {
-  int free_spaces;
+  int count;
   task_t *queue;
-  enum sem_state state;
+  enum obj_state state;
 } semaphore_t ;
 
 // estrutura que define um mutex
@@ -50,7 +50,10 @@ typedef struct
 // estrutura que define uma barreira
 typedef struct
 {
-  // preencher quando necessário
+  int max_count;
+  int count;
+  task_t *queue;
+  enum obj_state state;
 } barrier_t ;
 
 // estrutura que define uma fila de mensagens
