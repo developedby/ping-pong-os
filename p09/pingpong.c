@@ -37,7 +37,8 @@ struct itimerval preemption_timer;
 int preemption_counter;
 int execution_lock = 0;
 
-unsigned int system_time = 0;
+unsigned int system_time = 0;  //tempo que o sistema esta rodando em ms
+int active_tasks = 0;
 
 void preemption_tick ()
 {
@@ -72,11 +73,9 @@ void preemption_tick ()
 
 void pingpong_init ()
 {
-  // Marca que ainda não inicializou
   initialized = 0;
-
-  // Inicializa o relogio
   system_time = 0;
+  active_tasks = 0;
 
   // Impede que init seja interrompido
   execution_lock++;
@@ -169,6 +168,9 @@ int task_create (task_t *task, void (*start_func)(void *), void *arg)
      exit (1);
   }
   makecontext(task->context, (void*)start_func, 1, arg);
+
+  active_tasks ++;
+
   execution_lock--;
 
   // Interrompe a tarefa atual para evitar inversao de prioridade
@@ -224,6 +226,8 @@ void task_exit (int exitCode)
   execution_lock++;
 
   current_task->exit_code = exitCode;
+  current_task->exec_state = FINISHED;
+  active_tasks--;
 
   printf( "Task %d exit: execution time %d ms, processor time %d ms, %d activations\n",
           current_task->tid,
@@ -324,7 +328,6 @@ void task_resume (task_t *task)
   {
     return;
   }
-  printf("Voltando a task %d", task->tid);
   execution_lock++;
   task_queue_remove(task, task->queue);
   task_queue_append(task, &ready_queue);
@@ -342,40 +345,27 @@ void task_yield ()
 void dispatcher_body ()
 {
   task_t *next_task;
-  int done = 0;
-  while (!done)
+  while (active_tasks > 1) // Deve ter um jeito melhor, 1 porque o dispatcher sempre existe
   {
-    while (ready_queue)
+    // Checa se tem alguem para acordar
+    while (sleeping_queue && (sleeping_queue->wake_time < systime()))
     {
-      // Checa se tem alguem para acordar
-      while(sleeping_queue && (sleeping_queue->wake_time < systime()))
-      {
-        task_resume(sleeping_queue);
-      }  
+      task_resume(sleeping_queue);
+    }  
 
+    if (ready_queue)
+    {
       // Troca para a proxima tarefa
       next_task = scheduler();
       if (next_task)
       {
         task_switch(next_task); // transfere controle para a tarefa "next"
       }
-      else
+      // Proxima tarefa pode nao existir se nao tiver ninguem na fila de prontos
+      /*else
       {
-        printf("dispatcher_body: Próxima tarefa não existe\n");
-      }
-
-    }
-
-    // Se nao tem nenhuma tarefa pra rodar mas tem processos dormindo, espera
-    if (sleeping_queue)
-    {
-      while (sleeping_queue->wake_time > systime())
-        ;
-      task_resume(sleeping_queue);
-    }
-    else
-    {
-      done = 1;
+        printf("dispatcher_body: Warning - Próxima tarefa não existe\n");
+      }*/ 
     }
   }
   task_exit(0); // encerra a tarefa dispatcher
@@ -494,7 +484,7 @@ int task_join (task_t *task)
 
 void task_sleep (int t)
 {
-  current_task->wake_time = systime() + t;
+  current_task->wake_time = systime() + t*1000;
   task_suspend(current_task, &sleeping_queue);
   return;
 }
@@ -539,7 +529,7 @@ void task_queue_sort_last_element_by_wake_time(task_t **queue)
   {
     if (elem->wake_time > last_elem->wake_time)
     {
-      if (queue == &elem)
+      if (*queue == elem)
       {
         queue = &last_elem;
       }
