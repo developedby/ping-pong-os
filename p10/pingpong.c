@@ -548,3 +548,58 @@ void task_queue_sort_last_element_by_wake_time(task_t **queue)
   execution_lock--;
   return;
 }
+
+
+
+
+int sem_create (semaphore_t *s, int value)
+{
+  if (!s)
+  {
+    return -1;
+  }
+  // Tem que disponibilziar pelo menos 1 recurso
+  if (value < 1)
+  {
+    return -1;
+  }
+  // Não é seguro, já que s->created pode ser 1 pq *s não foi inicializado
+  if (s->created == 1)
+  {
+    return -1;
+  }
+  s->created = 1;
+  s->queue = NULL;
+  s->free_spaces = value;
+  return 0;
+}
+
+int sem_down (semaphore_t *s)
+{
+  execution_lock++;
+  if (!s || s->created != 1)
+  {
+    return -1;
+  }
+  
+  s->free_spaces--;
+  if (s->free_spaces >= 0)
+  {
+    return 0;
+  }
+  else
+  {
+    task_suspend(current_task, &(s->queue);
+    return 0;
+  }
+}
+
+int sem_up (semaphore_t *s)
+{
+  execution_lock++;
+}
+
+int sem_destroy (semaphore_t *s)
+{
+  execution_lock++;
+}
