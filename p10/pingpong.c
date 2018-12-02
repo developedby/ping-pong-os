@@ -615,7 +615,7 @@ int sem_up (semaphore_t *s)
     return -1;
   }
 
-  if (s->count < s->max_count)
+  //if (s->count < s->max_count)
   {
     s->count++;
     if (s->queue)
@@ -625,11 +625,11 @@ int sem_up (semaphore_t *s)
     execution_lock--;
     return 0;
   }
-  else
+  /*else
   {
     execution_lock--;
     return -1;
-  }
+  }*/
 }
 
 int sem_destroy (semaphore_t *s)
