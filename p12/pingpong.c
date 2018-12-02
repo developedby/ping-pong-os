@@ -568,9 +568,10 @@ int sem_create (semaphore_t *s, int value)
   {
     return -1;
   }
+  s->state = CREATED;
   s->queue = NULL;
   s->count = value;
-  s->state = CREATED;
+  s->max_count = value;
   return 0;
 }
 
@@ -615,14 +616,23 @@ int sem_up (semaphore_t *s)
     return -1;
   }
 
-  s->count++;
-  if (s->queue)
+  if (s->count < s->max_count)
   {
-    task_resume(s->queue);
+    s->count++;
+    if (s->queue)
+    {
+      task_resume(s->queue);
+    }
+    execution_lock--;
+    return 0;
   }
-  execution_lock--;
-  return 0;
+  else
+  {
+    execution_lock--;
+    return -1;
+  }
 }
+
 
 int sem_destroy (semaphore_t *s)
 {
@@ -644,19 +654,12 @@ int sem_destroy (semaphore_t *s)
 
 int barrier_create (barrier_t *b, int N)
 {
-  if (!b)
+  if (!b || b->state == CREATED || N < 0)
   {
+    execution_lock--;
     return -1;
   }
-  if (N <= 0)
-  {
-    return -1;
-  }
-  // Não é seguro, já que b->state pode ser CREATED pq *b não foi inicializado
-  if (b->state == CREATED)
-  {
-    return -1;
-  }
+
   b->queue = NULL;
   b->count = N;
   b->max_count = N;
@@ -722,24 +725,17 @@ int barrier_destroy (barrier_t *b)
 
 int mqueue_create (mqueue_t *queue, int max, int size)
 {
-  if (!queue)
+  if (!queue || queue->state == CREATED || size <= 0 || max <= 0)
   {
-    return -1;
-  }
-  if (size <= 0)
-  {
-    return -1;
-  }
-  // Não é seguro, já que queue->state pode ser CREATED pq *queue não foi inicializado
-  if (queue->state == CREATED)
-  {
+    execution_lock--;
     return -1;
   }
 
   queue->queue = NULL;
   queue->msg_size = size;
   queue->msg_count = 0;
-  sem_create(&(queue->sem), max);
+  sem_create(&(queue->send_sem), max);
+  sem_create(&(queue->recv_sem), 0);
   queue->state = CREATED;
   return 0;
 }
@@ -747,18 +743,13 @@ int mqueue_create (mqueue_t *queue, int max, int size)
 int mqueue_send (mqueue_t *queue, void *msg)
 {
   execution_lock++;
-  if (!queue)
+  if (!queue || queue->state != CREATED)
   {
     execution_lock--;
     return -1;
-  }  // Não é seguro, já que queue->state pode ser CREATED pq *queue não foi inicializado
-  if (queue->state == CREATED)
-  {
-    execution_lock--;
-    return -1;
-  }
+  } // Não é seguro, já que queue->state pode ser CREATED pq *queue não foi inicializado
 
-  if (sem_down(&(queue->sem)) == 0)
+  if (sem_down(&(queue->send_sem)) == 0)
   {
     mqueue_elem_t *new_elem = malloc(sizeof(mqueue_elem_t));
     new_elem->msg = malloc(queue->msg_size);
@@ -767,7 +758,9 @@ int mqueue_send (mqueue_t *queue, void *msg)
     new_elem->prev = NULL;
     queue_append((queue_t**)&(queue->queue), (queue_t*)new_elem);
     new_elem->queue = queue;
+
     queue->msg_count++;
+    sem_up(&(queue->recv_sem));
     execution_lock--;
     return 0;
   }
@@ -781,18 +774,58 @@ int mqueue_send (mqueue_t *queue, void *msg)
 int mqueue_recv (mqueue_t *queue, void *msg)
 {
   execution_lock++;
-  if (!queue)
+  if (!queue || queue->state != CREATED)
   {
     execution_lock--;
     return -1;
-  }  // Não é seguro, já que queue->state pode ser CREATED pq *queue não foi inicializado
-  if (queue->state == CREATED)
-  {
-    execution_lock--;
-    return -1;
-  }
+  } // Não é seguro, já que queue->state pode ser CREATED pq *queue não foi inicializado
+
+   if ((queue->msg_count > 0) || (sem_down(&(queue->recv_sem)) == 0))
+    {
+      mqueue_elem_t *recvd_elem = (mqueue_elem_t*)queue_remove((queue_t**)&(queue->queue), (queue_t*)(queue->queue));
+      memcpy(msg, recvd_elem->msg, queue->msg_size);
+      queue->msg_count--;
+      free(recvd_elem->msg);
+      free(recvd_elem);
+
+      sem_up(&(queue->send_sem));
+      execution_lock--;
+      return 0;
+    }
+    else
+    {
+      execution_lock--;
+      return -1;
+    }
 }
 
-int mqueue_destroy (mqueue_t *queue) ;
+int mqueue_destroy (mqueue_t *queue)
+{
+  execution_lock++;
+  if (!queue || queue->state != CREATED)
+  {
+    execution_lock--;
+    return -1;
+  } // Não é seguro, já que queue->state pode ser CREATED pq *queue não foi inicializado
 
-int mqueue_msgs (mqueue_t *queue) ;
+  queue->state = DESTROYED;
+  while(queue->queue)
+  {
+    free(queue->queue->msg);
+    free(queue_remove((queue_t**)&(queue->queue), (queue_t*)(queue->queue)));
+  }
+  queue->msg_count = 0;
+  sem_destroy(&(queue->recv_sem));
+  sem_destroy(&(queue->send_sem));
+  return 0;
+}
+
+int mqueue_msgs (mqueue_t *queue)
+{
+  if (!queue || queue->state != CREATED)
+  {
+    return -1;
+  } // Não é seguro, já que queue->state pode ser CREATED pq *queue não foi inicializado
+
+  return queue->msg_count;
+}

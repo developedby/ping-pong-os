@@ -624,6 +624,7 @@ int sem_up (semaphore_t *s)
     }
     execution_lock--;
     return 0;
+  }
   else
   {
     execution_lock--;

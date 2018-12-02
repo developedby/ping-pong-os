@@ -37,6 +37,7 @@ typedef struct task_t
 typedef struct
 {
   int count;
+  int max_count;
   task_t *queue;
   enum obj_state state;
 } semaphore_t ;
@@ -57,19 +58,23 @@ typedef struct
 } barrier_t ;
 
 // estrutura que define uma fila de mensagens
-typedef struct
+//struct mqueue_elem_t;
+typedef struct mqueue_t
 {
-  semaphore_t sem;
+  semaphore_t send_sem;
+  semaphore_t recv_sem;
   int msg_size;
   int msg_count;
-  mqueue_elem_t *queue;
+  struct mqueue_elem_t *queue;
   enum obj_state state;
 } mqueue_t ;
 
-typedef struct
+typedef struct mqueue_elem_t
 {
   struct mqueue_elem_t *prev, *next;
   mqueue_t *queue;
   void *msg;
 } mqueue_elem_t ;
+
+
 #endif
