@@ -136,9 +136,9 @@ int task_create (task_t *task, void (*start_func)(void *), void *arg)
   task_queue_append(task, &ready_queue);
 
   task->tid = next_tid++;
-  task->owner_uid = -1; // Teria que receber como parametro, mas nao posso alterar a definicao de task_create
+  task->owner_uid = -1; // Teria que receber como argumento, mas nao posso alterar a definicao de task_create
                         // Marca como usuario por padrao, pelo motivo acima
-  printf("Criando task %d no endereço %p\n", task->tid, task);
+  //printf("Criando task %d no endereço %p\n", task->tid, task);
 
   task->s_prio = 0;
   task->d_prio = task->s_prio;
