@@ -531,7 +531,7 @@ void task_queue_sort_last_element_by_wake_time(task_t **queue)
     {
       if (*queue == elem)
       {
-        queue = &last_elem;
+        *queue = last_elem;
       }
       else
       {
