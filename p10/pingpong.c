@@ -569,7 +569,8 @@ int sem_create (semaphore_t *s, int value)
   }
   s->state = CREATED;
   s->queue = NULL;
-  s->free_spaces = value;
+  s->count = value;
+  s->max_count = value;
   return 0;
 }
 
@@ -582,8 +583,8 @@ int sem_down (semaphore_t *s)
     return -1;
   }
   
-  s->free_spaces--;
-  if (s->free_spaces >= 0)
+  s->count--;
+  if (s->count >= 0)
   {
     execution_lock--;
     return 0;
@@ -614,13 +615,20 @@ int sem_up (semaphore_t *s)
     return -1;
   }
 
-  s->free_spaces++;
-  if (s->queue)
+  if (s->count < s->max_count)
   {
-    task_resume(s->queue);
+    s->count++;
+    if (s->queue)
+    {
+      task_resume(s->queue);
+    }
+    execution_lock--;
+    return 0;
+  else
+  {
+    execution_lock--;
+    return -1;
   }
-  execution_lock--;
-  return 0;
 }
 
 int sem_destroy (semaphore_t *s)
