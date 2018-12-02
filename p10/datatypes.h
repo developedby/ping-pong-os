@@ -10,7 +10,8 @@
 
 #include <ucontext.h>
 
-enum task_execution_state { READY=0, SUSPENDED, RUNNING, FINISHED };
+enum task_execution_state { READY, SUSPENDED, RUNNING, FINISHED };
+enum sem_state { CREATED=548793, DESTROYED };
 
 // Estrutura que define uma tarefa
 typedef struct task_t
@@ -37,7 +38,7 @@ typedef struct
 {
   int free_spaces;
   task_t *queue;
-  int created;
+  enum sem_state state;
 } semaphore_t ;
 
 // estrutura que define um mutex

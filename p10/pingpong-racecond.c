@@ -21,6 +21,8 @@ void taskBody(void *id)
    for (i=0; i< NUMSTEPS; i++)
    {
       sem_down (&s) ;
+      if(!(soma % 1000000))
+        printf("%d\n", soma);
       soma += 1 ;
       sem_up (&s) ;
    }

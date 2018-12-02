@@ -550,25 +550,24 @@ void task_queue_sort_last_element_by_wake_time(task_t **queue)
 }
 
 
-
-
 int sem_create (semaphore_t *s, int value)
 {
   if (!s)
   {
     return -1;
   }
-  // Tem que disponibilziar pelo menos 1 recurso
-  if (value < 1)
+  // Tem que disponibilziar pelo menos 1 recurso?
+  // Value == 0 significa q a task espera por outra pessoa liberar ela
+  if (value < 0)
   {
     return -1;
   }
   // Não é seguro, já que s->created pode ser 1 pq *s não foi inicializado
-  if (s->created == 1)
+  if (s->state == CREATED)
   {
     return -1;
   }
-  s->created = 1;
+  s->state = CREATED;
   s->queue = NULL;
   s->free_spaces = value;
   return 0;
@@ -577,29 +576,67 @@ int sem_create (semaphore_t *s, int value)
 int sem_down (semaphore_t *s)
 {
   execution_lock++;
-  if (!s || s->created != 1)
+  if (!s || s->state != CREATED)
   {
+    execution_lock--;
     return -1;
   }
   
   s->free_spaces--;
   if (s->free_spaces >= 0)
   {
+    execution_lock--;
     return 0;
   }
   else
   {
-    task_suspend(current_task, &(s->queue);
-    return 0;
+    task_suspend(current_task, &(s->queue));
+    if (s->state == CREATED)
+    {
+      execution_lock--;
+      return 0;
+    }
+    // Se o semaforo acabou antes da tarefa acordar ou sumiu
+    else
+    {
+      execution_lock--;
+      return 1;
+    }
   }
 }
 
 int sem_up (semaphore_t *s)
 {
   execution_lock++;
+  if (!s || s->state != CREATED)
+  {
+    execution_lock--;
+    return -1;
+  }
+
+  s->free_spaces++;
+  if (s->queue)
+  {
+    task_resume(s->queue);
+  }
+  execution_lock--;
+  return 0;
 }
 
 int sem_destroy (semaphore_t *s)
 {
   execution_lock++;
+  if (!s || s->state != CREATED)
+  {
+    execution_lock--;
+    return -1;
+  }
+
+  s->state = DESTROYED;
+  while(s->queue)
+  {
+    task_resume(s->queue);
+  }
+  execution_lock--;
+  return 0;
 }
