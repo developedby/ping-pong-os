@@ -76,5 +76,13 @@ typedef struct mqueue_elem_t
   void *msg;
 } mqueue_elem_t ;
 
+typedef struct disk_driver_t
+{
+  struct sigaction preemption_action;
+  struct itimerval preemption_timer;
+  task_t task;
+  task_t *queue;
+  int new_event;
+} disk_driver_t;
 
 #endif

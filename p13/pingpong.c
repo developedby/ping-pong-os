@@ -30,6 +30,7 @@ task_t *sleeping_queue = NULL;
 task_t *current_task = NULL;
 task_t dispatcher;
 task_t main_task;
+disk_driver_t disk_driver;
 
 int initialized = 0;  // 1 se o sistema operacional já foi inicializado
 
@@ -837,7 +838,7 @@ void disk_driver_body (void * args)
   {
     // obtém o semáforo de acesso ao disco
     // se foi acordado devido a um sinal do disco
-    if (disco gerou um sinal)
+    if (disk_driver.new_event)
     {
       // acorda a tarefa cujo pedido foi atendido
     }
@@ -878,12 +879,14 @@ int disk_block_write (int block, void *buffer)
 
 int diskdriver_init (int *numBlocks, int *blockSize)
 {
-  disk_cmd(DISK_CMD_INIT, 0, 0);
-  disk_driver.signal.sa_handler = harddisk_SignalHandle ;
+  disk_driver.signal.sa_handler = disk_driver_operation_finished;
   sigemptyset (&disk_driver.signal.sa_mask);
   disk_driver.signal.sa_flags = 0;
   sigaction (SIGUSR1, &disk_driver.signal, 0);
 
+  task_create(disk_driver.task, disk_driver_body, 0);
+
+  return disk_cmd(DISK_CMD_INIT, 0, 0);
 }
 
 void disk_driver_operation_finished ()
