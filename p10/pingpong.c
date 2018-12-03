@@ -649,3 +649,26 @@ int sem_destroy (semaphore_t *s)
   execution_lock--;
   return 0;
 }
+
+
+int mutex_create (mutex_t *m)
+{
+  return sem_create((semaphore_t*)m, 1);
+}
+
+int mutex_lock (mutex_t *m)
+{
+  return sem_down(m);
+}
+
+int mutex_unlock (mutex_t *m)
+{
+  return sem_up(m);
+}
+
+int mutex_destroy (mutex_t *m) 
+{
+  return sem_destroy(m);
+}
+
+

@@ -43,10 +43,7 @@ typedef struct
 } semaphore_t ;
 
 // estrutura que define um mutex
-typedef struct
-{
-  // preencher quando necessário
-} mutex_t ;
+typedef semaphore_t mutex_t;
 
 // estrutura que define uma barreira
 typedef struct

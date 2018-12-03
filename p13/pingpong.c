@@ -9,8 +9,6 @@
 #include <string.h>
 
 #include "queue.h"
-#include "diskdriver.h"
-#include "harddisk.h"
 
 #include "pingpong.h"
 
@@ -25,7 +23,6 @@ task_t* scheduler ();
 void task_queue_append(task_t *task, task_t **queue);
 task_t* task_queue_remove(task_t *task, task_t **queue);
 void task_queue_sort_last_element_by_wake_time(task_t **queue);
-void disk_driver_body ();
 
 int next_tid;
 task_t *ready_queue = NULL;
@@ -33,7 +30,6 @@ task_t *sleeping_queue = NULL;
 task_t *current_task = NULL;
 task_t dispatcher;
 task_t main_task;
-task_t disk_driver;
 
 int initialized = 0;  // 1 se o sistema operacional já foi inicializado
 
@@ -118,9 +114,6 @@ void pingpong_init ()
   //main_task.owner_uid = 0; // Marca a main como tarefa de sistema
   task_create(&dispatcher, dispatcher_body, 0);
   dispatcher.owner_uid = 0; // Marca dispatcher como tarefa de sistema
-  task_create(&disk_driver, disk_driver_body, 0);
-  disk_driver.owner_uid = 0;
-  di
 
   // Inicia o sistema
   current_task = NULL;
@@ -359,7 +352,7 @@ void dispatcher_body ()
     while (sleeping_queue && (sleeping_queue->wake_time < systime()))
     {
       task_resume(sleeping_queue);
-    }  
+    }
 
     if (ready_queue)
     {
@@ -373,7 +366,7 @@ void dispatcher_body ()
       /*else
       {
         printf("dispatcher_body: Warning - Próxima tarefa não existe\n");
-      }*/ 
+      }*/
     }
   }
   task_exit(0); // encerra a tarefa dispatcher
@@ -590,7 +583,7 @@ int sem_down (semaphore_t *s)
     execution_lock--;
     return -1;
   }
-  
+
   s->count--;
   if (s->count >= 0)
   {
@@ -682,7 +675,7 @@ int barrier_join (barrier_t *b)
     execution_lock--;
     return -1;
   }
-  
+
   b->count--;
   if (b->count > 0)
   {
@@ -734,7 +727,6 @@ int mqueue_create (mqueue_t *queue, int max, int size)
 {
   if (!queue || queue->state == CREATED || size <= 0 || max <= 0)
   {
-    execution_lock--;
     return -1;
   }
 
@@ -787,23 +779,23 @@ int mqueue_recv (mqueue_t *queue, void *msg)
     return -1;
   } // Não é seguro, já que queue->state pode ser CREATED pq *queue não foi inicializado
 
-   if ((queue->msg_count > 0) || (sem_down(&(queue->recv_sem)) == 0))
-    {
-      mqueue_elem_t *recvd_elem = (mqueue_elem_t*)queue_remove((queue_t**)&(queue->queue), (queue_t*)(queue->queue));
-      memcpy(msg, recvd_elem->msg, queue->msg_size);
-      queue->msg_count--;
-      free(recvd_elem->msg);
-      free(recvd_elem);
+  if (sem_down(&(queue->recv_sem)) == 0)
+  {
+    mqueue_elem_t *recvd_elem = (mqueue_elem_t*)queue_remove((queue_t**)&(queue->queue), (queue_t*)(queue->queue));
+    memcpy(msg, recvd_elem->msg, queue->msg_size);
+    queue->msg_count--;
+    free(recvd_elem->msg);
+    free(recvd_elem);
 
-      sem_up(&(queue->send_sem));
-      execution_lock--;
-      return 0;
-    }
-    else
-    {
-      execution_lock--;
-      return -1;
-    }
+    sem_up(&(queue->send_sem));
+    execution_lock--;
+    return 0;
+  }
+  else
+  {
+    execution_lock--;
+    return -1;
+  }
 }
 
 int mqueue_destroy (mqueue_t *queue)
@@ -824,6 +816,7 @@ int mqueue_destroy (mqueue_t *queue)
   queue->msg_count = 0;
   sem_destroy(&(queue->recv_sem));
   sem_destroy(&(queue->send_sem));
+  execution_lock--;
   return 0;
 }
 
@@ -836,7 +829,6 @@ int mqueue_msgs (mqueue_t *queue)
 
   return queue->msg_count;
 }
-
 
 
 void disk_driver_body (void * args)

@@ -22,7 +22,7 @@ void taskBody(void *id)
    {
       sem_down (&s) ;
       if(!(soma % 1000000))
-        printf("%d\n", soma);
+        printf("%ld\n", soma);
       soma += 1 ;
       sem_up (&s) ;
    }
